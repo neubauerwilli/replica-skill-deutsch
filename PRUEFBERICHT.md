@@ -32,7 +32,7 @@ Produktionsdaten. Bestehende konkrete Veröffentlichungsaufträge bleiben gülti
 
 - Ursprüngliche Suite: 58 Tests bestanden.
 - Erweiterte Suite: 79 Tests bestanden unter Windows mit Python 3.12.
-  Die neuen Regressionen wurden vor den Korrekturen mit Fehlern beobachtet.
+  Die wesentlichen Fehlerfälle wurden vor den Korrekturen mit Fehlern beobachtet.
 - `claude plugin validate` für beide Manifeste: bestanden, Claude Code 2.1.296.
 - Laden über `--plugin-dir`: alle elf Skills im tatsächlichen
   Claude-Code-Register mit dem Namensraum `replica-skill-deutsch` erkannt.
@@ -49,9 +49,9 @@ Produktionsdaten. Bestehende konkrete Veröffentlichungsaufträge bleiben gülti
   Zugangsschlüssel-Signaturen: keine Treffer. Dies ist kein vollständiger
   Geheimnisscanner.
 
-Die Suite läuft zusätzlich per GitHub Actions auf Windows und Linux mit
-Python 3.10 und 3.13. Ein konfigurierter Workflow ist erst durch seine
-tatsächlichen GitHub-Ergebnisse bestätigt.
+Die Suite wurde zusätzlich per GitHub Actions auf Windows und Linux mit
+Python 3.10 und 3.13 ausgeführt: alle vier Kombinationen bestanden.
+[Erfolgreicher GitHub-Testlauf](https://github.com/neubauerwilli/replica-skill-deutsch/actions/runs/39263915218).
 
 ## Noch offen und Grenzen
 
