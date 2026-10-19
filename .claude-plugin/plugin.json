@@ -1,0 +1,23 @@
+{
+  "name": "replica-skill-deutsch",
+  "description": "Elf kostenlose Claude-Skills auf Deutsch, die jede App nachbauen: auseinandernehmen, neu bauen, auf Fehler testen, dann beheben, was ihre Nutzer hassen. Kostenlos, MIT.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Willi Neubauer",
+    "url": "https://willineubauer.com"
+  },
+  "homepage": "https://github.com/neubauerwilli/replica-skill-deutsch",
+  "repository": "https://github.com/neubauerwilli/replica-skill-deutsch",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-skills",
+    "deutsch",
+    "app-klon",
+    "reverse-engineering",
+    "saas",
+    "indie-hacker",
+    "produkt"
+  ],
+  "skills": "./"
+}

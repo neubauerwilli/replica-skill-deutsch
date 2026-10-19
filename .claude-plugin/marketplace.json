@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "replica-skill-deutsch",
+  "description": "Der Replica-Skill auf Deutsch für Claude",
+  "owner": {
+    "name": "Willi Neubauer",
+    "url": "https://willineubauer.com"
+  },
+  "plugins": [
+    {
+      "name": "replica-skill-deutsch",
+      "description": "Elf Claude-Skills auf Deutsch, die jede App nachbauen: Erkundung, Architektur, Design, Bau, Backend, Test, Paritätsvergleich, ein Bewertungen lesender Unternehmer-Skill, Marke, Start und Livegang.",
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/neubauerwilli/replica-skill-deutsch"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "avoid": ["Name der Original-App", "Seine Firma"],
+  "app_store": {
+    "name": "Slotwise: Buchungslinks",
+    "subtitle": "Link teilen, Termin bekommen",
+    "promotional_text": "Neu: SMS-Erinnerungen, damit Kunden weniger Termine vergessen. Gratis für einen Kalender.",
+    "description": "Slotwise macht aus deinem Kalender einen Buchungslink.\n\nTeile den Link. Kunden sehen nur die Zeiten, zu denen du frei bist, wählen eine aus, und sie landet mit angehängtem Videolink in deinem Kalender.\n\nDas bekommst du:\n- Ein Link für jede Art von Termin\n- Pufferzeiten, damit Termine nie direkt hintereinander liegen\n- SMS- und E-Mail-Erinnerungen\n- Zahlung bei der Buchung\n\nGratis für einen Kalender. Pro kostet 8 € im Monat.",
+    "keywords": "terminplaner,termine,kalender,meetings,erinnerung,verfügbarkeit,kunden,planer",
+    "whats_new": "SMS-Erinnerungen. Schalte sie in den Einstellungen ein."
+  },
+  "google_play": {
+    "title": "Slotwise: Buchungslinks",
+    "short_description": "Teile einen Link, und Kunden buchen eine Zeit, zu der du wirklich frei bist.",
+    "full_description": "Slotwise macht aus deinem Kalender einen Buchungslink.\n\nTeile den Link. Kunden sehen nur die Zeiten, zu denen du frei bist, wählen eine aus, und sie landet mit angehängtem Videolink in deinem Kalender.\n\nGratis für einen Kalender. Pro kostet 8 € im Monat."
+  }
+}
