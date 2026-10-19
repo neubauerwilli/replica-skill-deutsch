@@ -73,8 +73,13 @@ def words(text):
 
 
 def lint(listing, avoid=None):
+    if not isinstance(listing, dict):
+        raise ValueError("Eintrag muss ein JSON-Objekt sein")
+    configured = listing.get("avoid", [])
+    if not isinstance(configured, list) or not all(isinstance(a, str) for a in configured):
+        raise ValueError("avoid muss eine Liste von Namen sein")
     issues = []
-    avoid = [a.strip() for a in (avoid or listing.get("avoid") or []) if a.strip()]
+    avoid = [a.strip() for a in configured + (avoid or []) if a.strip()]
 
     def add(level, store, field, msg):
         issues.append({"level": level, "store": store, "field": field, "message": msg})
@@ -82,13 +87,15 @@ def lint(listing, avoid=None):
     found_store = False
     for store, limits in LIMITS.items():
         data = listing.get(store)
+        if data is not None and (not isinstance(data, dict) or not all(isinstance(v, str) for v in data.values())):
+            raise ValueError("%s muss ein Objekt mit Textfeldern sein" % store)
         if not data:
             continue
         found_store = True
         for field, limit in limits.items():
             value = data.get(field, "")
             n = length(value)
-            if not value:
+            if not value.strip():
                 level = "error" if field in ("name", "title", "description",
                                              "full_description") else "warn"
                 add(level, store, field, "leer")
@@ -172,11 +179,11 @@ def main(argv=None):
     try:
         with open(args.listing, encoding="utf-8") as fh:
             listing = json.load(fh)
+        avoid = args.avoid.split(",") if args.avoid else None
+        issues = lint(listing, avoid)
     except (OSError, ValueError) as exc:
         print("listing: %s" % exc, file=sys.stderr)
         return 2
-    avoid = args.avoid.split(",") if args.avoid else None
-    issues = lint(listing, avoid)
     if args.json:
         print(json.dumps(issues, indent=2))
     else:

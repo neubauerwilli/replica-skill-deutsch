@@ -32,6 +32,7 @@ Layout. Wofür Nutzer bezahlen, sind Funktionen.
 import argparse
 import csv
 import json
+import math
 import sys
 
 WEIGHT = {"must": 3, "should": 2, "could": 1, "p0": 3, "p1": 2, "p2": 1}
@@ -56,6 +57,8 @@ def load(path):
                                   % (path, need))
         rows = []
         for i, raw in enumerate(reader, start=2):
+            if None in raw:
+                raise MatrixError("Zeile %d: zu viele CSV-Felder; Text mit Kommas in Anführungszeichen setzen" % i)
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
             if not row.get("feature"):
                 continue
@@ -73,10 +76,14 @@ def score(rows):
         original = row.get("original", "yes").lower() or "yes"
         clone = row.get("clone", "").lower()
         prio = row.get("priority", "").lower()
+        if original not in ("yes", "y", "true", "no", "n", "false"):
+            problems.append("Zeile %d: original '%s' ist nicht yes/no" % (row["line"], original))
         if original in ("no", "n", "false"):
             extras.append(row)
             continue
         if clone == "skip":
+            if not row.get("notes", "").strip():
+                problems.append("Zeile %d: skip braucht eine Begründung" % row["line"])
             skipped.append(row)
             continue
         if prio not in WEIGHT:
@@ -133,8 +140,13 @@ def visual_scores(paths):
     for p in paths:
         with open(p, encoding="utf-8") as fh:
             data = json.load(fh)
-        if "score" not in data:
+        if not isinstance(data, dict) or "score" not in data:
             raise MatrixError("%s ist keine Ausgabe von imgdiff.py --json" % p)
+        value = data["score"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
+            raise MatrixError("%s: score muss eine endliche Zahl von 0 bis 100 sein" % p)
+        if not isinstance(data.get("files", {}), dict):
+            raise MatrixError("%s: files muss ein Objekt sein" % p)
         name = data.get("files", {}).get("clone", p)
         scores.append({"file": name, "score": float(data["score"]),
                        "mode": data.get("mode", "layout")})
@@ -210,7 +222,12 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--markdown", action="store_true")
     ap.add_argument("--fail-under", type=float)
+    ap.add_argument("--require-ready", action="store_true",
+                    help="Exit 1 bei fehlenden Must-haves, ungültiger/leerer Matrix oder Funktionswert unter 80")
     args = ap.parse_args(argv)
+    if args.fail_under is not None and (not math.isfinite(args.fail_under) or not 0 <= args.fail_under <= 100):
+        print("parity: --fail-under muss zwischen 0 und 100 liegen", file=sys.stderr)
+        return 2
     try:
         result = combine(score(load(args.matrix)), visual_scores(args.visual))
     except (MatrixError, OSError, ValueError) as exc:
@@ -220,6 +237,9 @@ def main(argv=None):
         print(json.dumps(result, indent=2))
     else:
         print(render(result, markdown=args.markdown))
+    if args.require_ready and (not result["counted"] or result["problems"] or
+            result["must_have_done"] < result["must_have_total"] or result["feature_score"] < 80):
+        return 1
     if args.fail_under is not None and result["overall"] < args.fail_under:
         return 1
     return 0

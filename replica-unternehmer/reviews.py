@@ -33,10 +33,12 @@ Themen mit weniger als 3 Bewertungen oder nur aus einer Quelle gelten als dünn.
 import argparse
 import csv
 import datetime as _dt
+import html
 import json
 import os
 import re
 import sys
+from urllib.parse import urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_THEMES = os.path.join(HERE, "themes.json")
@@ -50,14 +52,31 @@ class FeedbackError(Exception):
 def load_themes(path=DEFAULT_THEMES):
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
+    if not isinstance(data, dict) or not isinstance(data.get("themes"), list):
+        raise FeedbackError("Themen-Datei braucht ein Objekt mit einer themes-Liste")
     themes = []
+    ids = set()
     for t in data.get("themes", []):
+        if not isinstance(t, dict) or not isinstance(t.get("id"), str) or not t["id"].strip():
+            raise FeedbackError("jedes Thema braucht eine id als Text")
+        if t["id"] in ids:
+            raise FeedbackError("doppelte Themen-id: %s" % t["id"])
+        ids.add(t["id"])
+        for key in ("label", "kind"):
+            if key in t and not isinstance(t[key], str):
+                raise FeedbackError("%s muss Text sein" % key)
+        patterns = t.get("patterns", [])
+        if not isinstance(patterns, list) or not all(isinstance(p, str) for p in patterns):
+            raise FeedbackError("patterns muss eine Liste von regulären Ausdrücken sein")
         themes.append({
             "id": t["id"], "label": t.get("label", t["id"]),
             "kind": t.get("kind", "complaint"),
             "patterns": [re.compile(p, re.I) for p in t.get("patterns", [])],
         })
-    requests = [re.compile(p, re.I) for p in data.get("request_patterns", [])]
+    request_patterns = data.get("request_patterns", [])
+    if not isinstance(request_patterns, list) or not all(isinstance(p, str) for p in request_patterns):
+        raise FeedbackError("request_patterns muss eine Liste von regulären Ausdrücken sein")
+    requests = [re.compile(p, re.I) for p in request_patterns]
     return themes, requests
 
 
@@ -100,9 +119,18 @@ def load_reviews(path):
         kept, dropped, dupes = [], 0, 0
         seen = set()
         for i, raw in enumerate(reader, start=2):
+            if None in raw:
+                raise FeedbackError("Zeile %d: zu viele CSV-Felder; Bewertungstext mit Kommas in Anführungszeichen setzen" % i)
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
             url, text = row.get("url", ""), row.get("text", "")
-            if not url or not text or not re.match(r"^https?://", url):
+            try:
+                parsed = urlsplit(url)
+                valid_url = (parsed.scheme in ("http", "https") and parsed.hostname and
+                             not parsed.username and not parsed.password and
+                             not any(ch.isspace() or ch in '<>"' for ch in url))
+            except ValueError:
+                valid_url = False
+            if not valid_url or not text:
                 dropped += 1
                 continue
             key = re.sub(r"\W+", " ", text.lower()).strip()
@@ -216,10 +244,16 @@ def _stars(r):
     return "-" if r is None else ("%g*" % r)
 
 
+def safe_text(text):
+    """Fremdtext bleibt im Markdown sichtbar, erzeugt aber keine HTML-/Bild-Elemente."""
+    text = html.escape(" ".join(str(text).split()), quote=False)
+    return re.sub(r"([\\`*_{}\[\]()#!|>])", r"\\\1", text)
+
+
 def render(result, dropped=0, dupes=0):
     out = ["# Was die Nutzer des Originals hassen und wollen", ""]
     out.append("%d Bewertungen aus %d Quellen (%s). %d hatten Sternebewertungen." % (
-        result["reviews"], len(result["sources"]), ", ".join(result["sources"]) or "keine",
+        result["reviews"], len(result["sources"]), safe_text(", ".join(result["sources"])) or "keine",
         result["rated"]))
     if dropped:
         out.append("%d Zeilen verworfen: kein Link oder kein Text. Nichts wird ohne "
@@ -242,21 +276,21 @@ def render(result, dropped=0, dupes=0):
         out.append("| --- | --- | --- | --- | --- | --- | --- |")
         for i, t in enumerate(rows, 1):
             out.append("| %d | %s%s | %.1f | %d | %.0f%% | %s | %d |" % (
-                i, t["label"], " (dünn)" if t["thin"] else "", t["score"], t["count"],
+                i, safe_text(t["label"]), " (dünn)" if t["thin"] else "", t["score"], t["count"],
                 t["share_pct"], "-" if t["avg_rating"] is None else "%.1f" % t["avg_rating"],
                 len(t["sources"])))
         for t in rows[:6]:
             out.append("")
-            out.append("**%s**" % t["label"])
+            out.append("**%s**" % safe_text(t["label"]))
             for q in t["quotes"]:
-                out.append('- "%s" (%s, %s) %s' % (q["quote"], q["source"],
+                out.append('- "%s" (%s, %s) <%s>' % (safe_text(q["quote"]), safe_text(q["source"]),
                                                    _stars(q["rating"]), q["url"]))
     if result["requests"]:
         out.append("")
         out.append("## Gewünscht in ihren eigenen Worten")
         out.append("")
         for q in result["requests"][:25]:
-            out.append('- "%s" (%s, %s) %s' % (q["quote"], q["source"],
+            out.append('- "%s" (%s, %s) <%s>' % (safe_text(q["quote"]), safe_text(q["source"]),
                                                _stars(q["rating"]), q["url"]))
     if result["unthemed_negative"]:
         out.append("")
@@ -266,8 +300,8 @@ def render(result, dropped=0, dupes=0):
                    "oder ein Thema, das themes.json noch nicht hat. Oft der nützlichste Teil.")
         out.append("")
         for r in result["unthemed_negative"][:15]:
-            out.append('- (%s, %s) %s: "%s"' % (r["source"], _stars(r["rating"]),
-                                               r["url"], r["text"]))
+            out.append('- (%s, %s) <%s>: "%s"' % (safe_text(r["source"]), _stars(r["rating"]),
+                                               r["url"], safe_text(r["text"])))
     return "\n".join(out) + "\n"
 
 
@@ -282,6 +316,10 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     try:
+        if args.months <= 0:
+            raise FeedbackError("--months muss positiv sein")
+        if args.today and (not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.today) or parse_date(args.today) is None):
+            raise FeedbackError("--today braucht ein gültiges Datum JJJJ-MM-TT")
         themes, req = load_themes(args.themes)
         reviews, dropped, dupes = load_reviews(args.reviews)
     except (FeedbackError, OSError, ValueError, KeyError, re.error) as exc:
@@ -300,8 +338,12 @@ def main(argv=None):
         return 0
     text = render(result, dropped, dupes)
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as fh:
-            fh.write(text)
+        try:
+            with open(args.out, "w", encoding="utf-8") as fh:
+                fh.write(text)
+        except OSError as exc:
+            print("reviews: %s" % exc, file=sys.stderr)
+            return 2
         print("geschrieben: %s" % args.out)
     else:
         sys.stdout.write(text)

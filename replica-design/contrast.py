@@ -87,14 +87,16 @@ def default_pairs(cols):
 
 
 def check(cols, pairs):
+    if not isinstance(pairs, list):
+        raise ValueError("pairs muss eine Liste von Paaren sein")
     rows = []
     for p in pairs:
-        if len(p) < 2:
-            continue
+        if not isinstance(p, list) or len(p) not in (2, 3) or not all(isinstance(v, str) for v in p):
+            raise ValueError("jedes Paar braucht zwei Tokennamen und optional normal/large/ui")
         fg, bg = p[0], p[1]
         size = p[2] if len(p) > 2 else "normal"
         if size not in NEEDS:
-            size = "normal"
+            raise ValueError("unbekannte Textgröße: %s" % size)
         if fg not in cols or bg not in cols:
             rows.append({"fg": fg, "bg": bg, "size": size, "error": "unbekanntes Token"})
             continue
@@ -130,14 +132,21 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     try:
+        if len(a.args) not in (1, 2):
+            raise ValueError("eine Token-Datei oder genau zwei Hex-Farben angeben")
         if len(a.args) == 2 and all(HEX.match(x) for x in a.args):
             cols = {"fg": a.args[0], "bg": a.args[1]}
             pairs = [["fg", "bg"]]
         else:
+            if len(a.args) != 1:
+                raise ValueError("ungültiges Hex-Farbpaar")
             with open(a.args[0], encoding="utf-8") as fh:
                 tokens = json.load(fh)
+            if not isinstance(tokens, dict):
+                raise ValueError("Token-Datei muss ein JSON-Objekt sein")
             cols = colours(tokens)
-            pairs = tokens.get("pairs") or default_pairs(cols)
+            pairs = tokens.get("pairs", default_pairs(cols))
+        rows = check(cols, pairs)
     except (OSError, ValueError) as exc:
         print("contrast: %s" % exc, file=sys.stderr)
         return 2
@@ -145,7 +154,6 @@ def main(argv=None):
         print("contrast: keine Paare zu prüfen. Füge der Token-Datei eine \"pairs\"-Liste hinzu.",
               file=sys.stderr)
         return 2
-    rows = check(cols, pairs)
     print(json.dumps(rows, indent=2) if a.json else render(rows))
     return 1 if any("error" in r or not r["aa"] for r in rows) else 0
 

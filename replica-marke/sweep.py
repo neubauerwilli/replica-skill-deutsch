@@ -69,19 +69,37 @@ def build_patterns(avoid, domains):
 def is_binary(path):
     if os.path.splitext(path)[1].lower() in BINARY_EXT:
         return True
-    try:
-        with open(path, "rb") as fh:
-            return b"\0" in fh.read(4096)
-    except OSError:
-        return True
+    with open(path, "rb") as fh:
+        return b"\0" in fh.read(4096)
+
+
+def secret_file(name):
+    name = name.lower()
+    return (name == ".env" or name.startswith(".env.") or
+            name in ("credentials.json", "secrets.json", "id_rsa", "id_ed25519") or
+            name.endswith((".pem", ".key", ".p12", ".pfx")))
 
 
 def sweep(root, avoid=(), domains=(), colors=(), include_replica=False, max_size=2_000_000):
+    for label, values in (("avoid", avoid), ("domains", domains), ("colors", colors)):
+        if not isinstance(values, (list, tuple)) or not all(isinstance(v, str) for v in values):
+            raise ValueError("%s muss eine Liste von Texten sein" % label)
+    if any(not HEX.fullmatch(c.strip()) for c in colors):
+        raise ValueError("ungültige Hex-Farbe in colors")
     pats = build_patterns(avoid, domains)
-    cols = {norm_hex(c) for c in colors if HEX.fullmatch(c.strip())}
+    cols = {norm_hex(c.strip()) for c in colors}
+    if not pats and not cols:
+        raise ValueError("keine gültigen Suchbegriffe angegeben")
     hits = []
     root = os.path.abspath(root)
-    for dirpath, dirnames, filenames in os.walk(root):
+    if not os.path.isdir(root) or os.path.islink(root):
+        raise ValueError("Ziel muss ein vorhandener Ordner ohne Symlink sein")
+    scanned = 0
+
+    def walk_error(exc):
+        raise exc
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=walk_error):
         rel_dir = os.path.relpath(dirpath, root)
         keep = []
         for d in dirnames:
@@ -89,6 +107,8 @@ def sweep(root, avoid=(), domains=(), colors=(), include_replica=False, max_size
                 continue
             if d == "replica" and rel_dir == "." and not include_replica:
                 continue
+            if os.path.islink(os.path.join(dirpath, d)) or (hasattr(os.path, "isjunction") and os.path.isjunction(os.path.join(dirpath, d))):
+                raise ValueError("Verknüpfter Ordner wurde nicht geprüft: %s" % d)
             keep.append(d)
         dirnames[:] = sorted(keep)
         for d in dirnames:
@@ -98,21 +118,23 @@ def sweep(root, avoid=(), domains=(), colors=(), include_replica=False, max_size
                                  "line": 0, "kind": "path", "match": label,
                                  "text": "Ordnername"})
         for fn in sorted(filenames):
-            if fn in SKIP_FILES:
+            if fn in SKIP_FILES or secret_file(fn):
                 continue
             path = os.path.join(dirpath, fn)
+            if os.path.islink(path):
+                raise ValueError("Verknüpfte Datei wurde nicht geprüft: %s" % fn)
             rel = os.path.normpath(os.path.join(rel_dir, fn))
             for kind, label, rx in pats:
                 if kind == "name" and rx.search(fn):
                     hits.append({"file": rel, "line": 0, "kind": "path", "match": label,
                                  "text": "Dateiname"})
-            try:
-                if os.path.getsize(path) > max_size or is_binary(path):
-                    continue
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    lines = fh.readlines()
-            except OSError:
+            if is_binary(path):
                 continue
+            if os.path.getsize(path) > max_size:
+                raise ValueError("Textdatei zu groß für vollständige Prüfung: %s" % rel)
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+            scanned += 1
             for i, line in enumerate(lines, 1):
                 for kind, label, rx in pats:
                     if rx.search(line):
@@ -124,12 +146,14 @@ def sweep(root, avoid=(), domains=(), colors=(), include_replica=False, max_size
                             hits.append({"file": rel, "line": i, "kind": "color",
                                          "match": norm_hex(m.group(0)),
                                          "text": line.strip()[:160]})
+    if not scanned:
+        raise ValueError("keine prüfbaren Textdateien im Zielordner")
     return hits
 
 
 def render(hits):
     if not hits:
-        return "Sauber. Nichts vom Namen, der Domain oder den Farben des Originals gefunden."
+        return "Sauber in den geprüften Textdateien. Binärdateien, Build-Ausgaben und Geheimnisdateien sind ausgenommen."
     out = []
     by_kind = {}
     for h in hits:
@@ -160,6 +184,11 @@ def main(argv=None):
         try:
             with open(args.config, encoding="utf-8") as fh:
                 cfg = json.load(fh)
+            if not isinstance(cfg, dict):
+                raise ValueError("Konfiguration muss ein JSON-Objekt sein")
+            for key in ("avoid", "domains", "colors"):
+                if not isinstance(cfg.get(key, []), list) or not all(isinstance(v, str) for v in cfg.get(key, [])):
+                    raise ValueError("%s muss eine Liste von Texten sein" % key)
         except (OSError, ValueError) as exc:
             print("sweep: %s" % exc, file=sys.stderr)
             return 2
@@ -170,7 +199,11 @@ def main(argv=None):
         print("sweep: nichts zu suchen. Übergib mit --avoid den Namen der Original-App.",
               file=sys.stderr)
         return 2
-    hits = sweep(args.root, avoid, domains, colors, args.include_replica)
+    try:
+        hits = sweep(args.root, avoid, domains, colors, args.include_replica)
+    except (OSError, ValueError) as exc:
+        print("sweep: %s" % exc, file=sys.stderr)
+        return 2
     print(json.dumps(hits, indent=2) if args.json else render(hits))
     return 1 if hits else 0
 

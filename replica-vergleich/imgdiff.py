@@ -38,6 +38,8 @@ import sys
 import zlib
 
 SIG = b"\x89PNG\r\n\x1a\n"
+MAX_FILE_BYTES = 32 * 1024 * 1024
+MAX_PIXELS = 4_000_000
 
 
 class PngError(Exception):
@@ -113,7 +115,9 @@ def read_png(path):
     Alpha wird über Weiß gelegt, so wie ein Screenshot einer Seite sie zeigt.
     """
     with open(path, "rb") as fh:
-        data = fh.read()
+        data = fh.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
+        raise PngError("PNG ist größer als 32 MiB; Screenshot verkleinern oder zuschneiden")
     if data[:8] != SIG:
         raise PngError("%s ist keine PNG-Datei" % path)
     pos = 8
@@ -121,38 +125,58 @@ def read_png(path):
     plte = None
     trns = None
     idat = []
+    ended = False
     while pos + 8 <= len(data):
         length = struct.unpack(">I", data[pos:pos + 4])[0]
         ctype = data[pos + 4:pos + 8]
+        if pos + 12 + length > len(data):
+            raise PngError("abgeschnittener PNG-Block")
         chunk = data[pos + 8:pos + 8 + length]
+        crc = struct.unpack(">I", data[pos + 8 + length:pos + 12 + length])[0]
+        if zlib.crc32(ctype + chunk) & 0xffffffff != crc:
+            raise PngError("PNG-Prüfsumme stimmt nicht")
         pos += 12 + length
         if ctype == b"IHDR":
+            if ihdr is not None or len(chunk) != 13 or pos != 33:
+                raise PngError("ungültiger IHDR-Block")
             ihdr = struct.unpack(">IIBBBBB", chunk)
         elif ctype == b"PLTE":
+            if not chunk or len(chunk) % 3 or len(chunk) > 768:
+                raise PngError("ungültige PNG-Palette")
             plte = [tuple(chunk[i:i + 3]) for i in range(0, len(chunk), 3)]
         elif ctype == b"tRNS":
             trns = chunk
         elif ctype == b"IDAT":
             idat.append(chunk)
         elif ctype == b"IEND":
+            ended = True
             break
-    if ihdr is None:
+    if ihdr is None or not ended:
         raise PngError("%s hat keinen IHDR-Block" % path)
     width, height, depth, color, _comp, _filt, interlace = ihdr
+    if width < 1 or height < 1 or width * height > MAX_PIXELS:
+        raise PngError("PNG braucht positive Maße und höchstens 4 Millionen Pixel; Screenshot zuschneiden")
+    if _comp != 0 or _filt != 0:
+        raise PngError("nicht unterstützte PNG-Kompression oder Filtermethode")
     if interlace:
         raise PngError("%s ist interlaced gespeichert. Speichere es ohne Interlacing "
                        "neu (auf dem Mac: sips -s format png in.png --out out.png)" % path)
     channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color)
     if channels is None:
         raise PngError("nicht unterstützter PNG-Farbtyp %d" % color)
-    if depth not in (1, 2, 4, 8, 16):
+    allowed_depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+    if depth not in allowed_depths[color]:
         raise PngError("nicht unterstützte Bittiefe %d" % depth)
     if color == 3 and plte is None:
         raise PngError("Paletten-PNG ohne Palette")
     bits = depth * channels
     bpp = max(1, bits // 8)
     stride = (width * bits + 7) // 8
-    raw = zlib.decompress(b"".join(idat))
+    expected = height * (stride + 1)
+    decoder = zlib.decompressobj()
+    raw = decoder.decompress(b"".join(idat), expected + 1)
+    if len(raw) != expected or not decoder.eof or decoder.unconsumed_tail or decoder.unused_data:
+        raise PngError("PNG-Bilddaten haben eine ungültige oder zu große entpackte Länge")
     lines = _unfilter(raw, height, stride, bpp)
 
     scale = 255 // ((1 << depth) - 1) if depth < 8 else 1
@@ -170,7 +194,9 @@ def read_png(path):
                 row.append((s[i], s[i + 1], s[i + 2]))
         elif color == 3:
             for idx in s:
-                r, g, b = plte[idx] if idx < len(plte) else (0, 0, 0)
+                if idx >= len(plte):
+                    raise PngError("PNG-Palettenindex liegt außerhalb der Palette")
+                r, g, b = plte[idx]
                 a = alpha_pal[idx] if idx < len(alpha_pal) else 255
                 row.append(_over_white(r, g, b, a))
         elif color == 4:
@@ -278,6 +304,8 @@ def _regions(flags, n_rows, n_cols):
 def compare(img_a, img_b, mode="layout", width=480, cols=12, tolerance=24,
             edge_threshold=40):
     """Vergleicht zwei dekodierte Bilder. Gibt (Bericht als dict, Diff-Zeilen) zurück."""
+    if width <= 0 or not 1 <= cols <= 512 or not 0 <= tolerance <= 255:
+        raise ValueError("width muss positiv sein, cols 1 bis 512, tolerance 0 bis 255")
     wa, ha, _ = img_a
     wb, hb, _ = img_b
     target = min(width, wa, wb)
@@ -318,7 +346,7 @@ def compare(img_a, img_b, mode="layout", width=480, cols=12, tolerance=24,
         score = 100.0 * (1 - changed / float(total))
         report["changed_pixels"] = changed
         # Pixeltreffer als Rasterbereiche zusammenfassen, damit der Bericht lesbar bleibt.
-        cell = max(1, w // cols)
+        cell = max(1, int(math.ceil(w / float(cols))))
         n_rows = int(math.ceil(h / float(cell)))
         flags = [[False] * cols for _ in range(n_rows)]
         for r in range(n_rows):
@@ -334,7 +362,7 @@ def compare(img_a, img_b, mode="layout", width=480, cols=12, tolerance=24,
     else:
         ea = edges(ga, edge_threshold)
         eb = edges(gray(rb), edge_threshold)
-        cell = max(1, w // cols)
+        cell = max(1, int(math.ceil(w / float(cols))))
         n_rows = int(math.ceil(h / float(cell)))
         flags = [[False] * cols for _ in range(n_rows)]
         sims = []
@@ -432,17 +460,22 @@ def main(argv=None):
                     help="Exit 1, wenn der Wert darunter liegt")
     args = ap.parse_args(argv)
     try:
+        if args.fail_under is not None and (not math.isfinite(args.fail_under) or not 0 <= args.fail_under <= 100):
+            raise ValueError("--fail-under muss zwischen 0 und 100 liegen")
         a = read_png(args.original)
         b = read_png(args.clone)
-    except (PngError, OSError, zlib.error) as exc:
+        report, diff = compare(a, b, mode=args.mode, width=args.width, cols=args.cols,
+                               tolerance=args.tolerance)
+        if args.out:
+            import os
+            if os.path.realpath(args.out) in (os.path.realpath(args.original), os.path.realpath(args.clone)):
+                raise ValueError("Diff-Ausgabe darf keine Eingabedatei überschreiben")
+            write_png(args.out, report["compared_at"]["width"], report["compared_at"]["height"], diff)
+    except (PngError, OSError, ValueError, zlib.error) as exc:
         print("imgdiff: %s" % exc, file=sys.stderr)
         return 2
-    report, diff = compare(a, b, mode=args.mode, width=args.width, cols=args.cols,
-                           tolerance=args.tolerance)
     report["files"] = {"original": args.original, "clone": args.clone}
     if args.out:
-        write_png(args.out, report["compared_at"]["width"],
-                  report["compared_at"]["height"], diff)
         report["diff_image"] = args.out
     if args.json:
         print(json.dumps(report, indent=2))

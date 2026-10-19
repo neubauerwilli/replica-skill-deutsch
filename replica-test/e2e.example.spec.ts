@@ -16,8 +16,11 @@ test.describe('F01 Gast bucht einen Termin', () => {
 
   test('F01-H1 Idealweg', async ({ page }) => {
     await page.goto('/u/demo/30min');
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByRole('button', { name: /nächster freier tag/i }).click();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByRole('button', { name: /10:00/ }).click();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByLabel('Name').fill('Test Gast');
     await page.getByLabel('E-Mail').fill('gast@example.test');
     await page.getByRole('button', { name: /bestätigen/i }).click();
@@ -27,7 +30,8 @@ test.describe('F01 Gast bucht einen Termin', () => {
     expect(a11y.violations).toEqual([]);
   });
 
-  test('F01-E1 doppeltes Absenden erzeugt eine Buchung', async ({ page }) => {
+  // Offen, bis der projektspezifische Nachweis genau einer Buchung ergänzt ist.
+  test.skip('F01-E1 doppeltes Absenden erzeugt eine Buchung', async ({ page }) => {
     await page.goto('/u/demo/30min');
     await page.getByRole('button', { name: /nächster freier tag/i }).click();
     await page.getByRole('button', { name: /11:00/ }).click();

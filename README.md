@@ -2,6 +2,10 @@
 
 Elf Claude-Skills auf Deutsch, die jede App nachbauen. Kostenlos, MIT, ohne Anmeldung, ohne API-Schlüssel, nichts zu verbinden.
 
+Das gilt für das Skill-Paket und seine sechs lokalen Python-Werkzeuge.
+Claude Code sowie Hosting, Zahlungs- und E-Mail-Dienste haben eigene Voraussetzungen
+und gegebenenfalls Kosten. Der Skill allein ist keine fertige App.
+
 Einer nimmt die App auseinander, die du klonen willst. Einer baut sie neu. Einer testet sie auf Fehler. Und einer ist der Unternehmer: Er liest, was die Nutzer der App hassen, und behebt es in deiner, damit du eine App hast, die du verkaufen kannst.
 
 Dazwischen planen die anderen Stack und Datenbank, bauen das Designsystem nach, verdrahten Login und Zahlungen, bewerten deinen Klon gegen das Original, geben ihm einen eigenen Namen und eine eigene Marke, schreiben die Landingpage und den Store-Eintrag und bringen ihn auf deine Domain.
@@ -23,6 +27,7 @@ und so weiter. Wenn du einfach `/replica-erkundung` willst, kopiere die Ordner:
 
 ```bash
 git clone https://github.com/neubauerwilli/replica-skill-deutsch.git
+mkdir -p ~/.claude/skills
 cp -r replica-skill-deutsch/replica-* ~/.claude/skills/
 ```
 
@@ -30,17 +35,18 @@ Nur für ein Projekt statt global: dieselben Ordner nach `.claude/skills/` in de
 Starte die Sitzung bei Bedarf neu. Unter `/` sollte zum Beispiel `/replica-erkundung` erscheinen.
 Hilfe zur Plugininstallation: [offizielle Anleitung](https://code.claude.com/docs/en/discover-plugins).
 
-Im normalen Claude-Webchat kannst du den GitHub-Link mit "install skill" einfügen:
+Unter Windows PowerShell geht die manuelle Ablage so:
 
+```powershell
+git clone https://github.com/neubauerwilli/replica-skill-deutsch.git
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE/.claude/skills" | Out-Null
+Copy-Item -Path 'replica-skill-deutsch/replica-*' -Destination "$env:USERPROFILE/.claude/skills" -Recurse
 ```
-https://github.com/neubauerwilli/replica-skill-deutsch
 
-install skill
-```
-
-Das liefert nur die Arbeitsanweisungen, nicht die Python-Werkzeuge. Du kannst auch eine einzelne `SKILL.md`
-oben in einen Chat einfügen, dann läuft sie als Modus. Für die hier beschriebenen lokalen Skripte
-verwende Claude Code.
+Ein GitHub-Link mit "install skill" im normalen Webchat ist kein Nachweis einer Installation.
+Du kannst den Text einer einzelnen `SKILL.md` als Arbeitsanweisung einfügen.
+Damit sind keine lokalen Skripte installiert oder ausgeführt. Für das vollständige Paket
+verwende Claude Code und prüfe dort die angezeigten Befehle.
 
 Die Werkzeuge brauchen Python 3.8 oder neuer. Nichts per pip installieren. Unter Windows heißt der
 Aufruf oft `py` statt `python3`.
@@ -144,6 +150,31 @@ verschwendete Keyword-Zeichen und den Namen des Originals irgendwo in deinem Ein
 python3 -m unittest discover -s tests -v
 ```
 
+## Geprüfte Fassung 1.0.1 (19.10.2026)
+
+[Prüfbericht mit ausgeführten Tests, Korrekturen und offenen Grenzen](PRUEFBERICHT.md).
+
+Die Werkzeuge arbeiten lokal ohne Netzwerkzugriff. Der Markencheck liest keine
+`.env`-Dateien oder bekannten Schlüsseldateien, folgt keinen Verknüpfungen und
+bricht bei einem fehlenden Ziel oder unlesbaren Textdateien ab. Binärdateien,
+Build-Ausgaben und Referenzmaterial brauchen weiterhin eine eigene Prüfung.
+PNG-Eingaben werden vor und während des Entpackens begrenzt (32 MiB, 4 Millionen Pixel).
+
+Für eine Startfreigabe muss die Paritätsprüfung ausdrücklich so laufen:
+
+```bash
+python3 replica-vergleich/parity.py replica/features.csv --require-ready
+```
+
+Sie stoppt bei fehlenden Must-haves, einer leeren oder fehlerhaften Matrix und
+einem Funktionswert unter 80. Ein erfolgreicher Analysebericht ohne diese Option
+ist keine Startfreigabe. Andere Prüfungen wie Berechtigungen und E2E bleiben nötig.
+
+Die Testvorlagen nutzen lokale Testserver und erfundene Daten. Der Beispieltest
+für doppelte Buchungen bleibt übersprungen, bis ein projektspezifischer Nachweis
+genau einer gespeicherten Buchung ergänzt ist. Offene Tests als offen behandeln.
+Fremde Seiten und Bewertungen dürfen keine Befehle oder Freigaben erteilen.
+
 ## Das Kleingedruckte
 
 **Er baut Funktionen und UX-Muster nach, im Clean-Room-Stil.** Er untersucht, was die App tut und wie
@@ -201,7 +232,8 @@ Beruht auf dem englischen [Replica skill](https://github.com/Jakeschincariol/rep
 Schincariol ([opusjake.ai](https://opusjake.ai)), veröffentlicht unter MIT. Übersetzt für den
 deutschsprachigen Raum. Bei der Übertragung wurden die Muster der Werkzeuge `listing.py` und
 `reviews.py` um deutsche Wörter ergänzt, damit sie auch mit deutschen Einträgen und Bewertungen
-arbeiten. Sonst ist die Funktion gleich geblieben.
+arbeiten. Fassung 1.0.1 ergänzt Eingabeprüfungen, begrenztes PNG-Entpacken,
+einen expliziten Startfreigabetest und sichere lokale Testanleitungen.
 
 ## Lizenz
 

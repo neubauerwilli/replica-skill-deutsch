@@ -1,7 +1,7 @@
 {
   "name": "replica-skill-deutsch",
   "description": "Elf kostenlose Claude-Skills auf Deutsch, die jede App nachbauen: auseinandernehmen, neu bauen, auf Fehler testen, dann beheben, was ihre Nutzer hassen. Kostenlos, MIT.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Willi Neubauer",
     "url": "https://willineubauer.com"

@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 *.tmp
+.audit-tmp/
+.env
+.env.*
+!.env.example
